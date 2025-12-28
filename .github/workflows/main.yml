@@ -37,32 +37,34 @@ jobs:
             mingw-w64-x86_64-tools
             sed
 
-      # [关键修复步骤]
-      # 1. 将编译器替换为 g++
-      # 2. 添加 Windows 平台宏: -D__NT__ -D__X64__
-      # 3. 移除 -fPIC (Windows 不需要)
-      # 4. 尝试修复链接库路径 (Windows 下需链接 ida.lib)
+      # [关键修复]
+      # 1. 替换编译器为 g++，并加上 Windows/64位 宏定义
+      # 2. 移除 Linux 专用的 -fPIC 参数
+      # 3. [新] 在链接命令的末尾加上 ida.lib 的路径
       - name: Patch Makefile for Windows
         run: |
-          # 替换编译器并添加宏定义
+          # 1. 修正编译器和宏定义
           sed -i 's|/usr/bin/clang++|g++ -D__NT__ -D__X64__|g' Makefile
           
-          # 移除 -fPIC 标志 (Linux 专用)
+          # 2. 移除 -fPIC
           sed -i 's|-fPIC||g' Makefile
 
-          # 打印修改后的 Makefile 前几行以供检查
-          echo "=== Patched Makefile ==="
-          head -n 20 Makefile
+          # 3. 注入链接库 (ida.lib)
+          # 原理：找到输出指令 "-o bin/class_informer_gcc.so"，在它后面追加 ida.lib 的路径
+          # 注意：MinGW 可以直接链接 MSVC 格式的 .lib 文件
+          sed -i 's|-o bin/class_informer_gcc.so|-o bin/class_informer_gcc.so idasdk9/lib/x64_win_vc_64/ida.lib|g' Makefile
 
-      # 如果遇到链接错误 (Undefined reference to ...)，可能需要手动指定 ida.lib
-      # 但通常 MinGW 可以通过 -L 指定路径。这里先尝试直接编译。
+          # 打印 Makefile 检查修改是否生效
+          echo "=== Patched Makefile Content ==="
+          cat Makefile
+
       - name: Build Plugin
         run: make
 
       - name: Rename and Move Output
         run: |
-          # Makefile 默认输出在 bin/ 下，通常是 .so，我们需要 .dll
-          cp bin/class_informer_gcc.so class_informer_gcc.dll || cp bin/class_informer_gcc.dll class_informer_gcc.dll || echo "File not found in bin/"
+          # 尝试复制并重命名
+          cp bin/class_informer_gcc.so class_informer_gcc.dll || cp bin/class_informer_gcc.dll class_informer_gcc.dll || echo "Output file not found"
 
       - name: Verify DLL
         run: ls -l class_informer_gcc.dll

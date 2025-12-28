@@ -37,25 +37,24 @@ jobs:
             mingw-w64-x86_64-tools
             sed
 
-      # [关键修复]
-      # 1. 替换编译器为 g++，并加上 Windows/64位 宏定义
-      # 2. 移除 Linux 专用的 -fPIC 参数
-      # 3. [新] 在链接命令的末尾加上 ida.lib 的路径
+      # [核心修复]
+      # 1. 替换 g++ 并加上 Windows 宏
+      # 2. 移除 -fPIC
+      # 3. 使用更通用的正则，将 ida.lib 追加到链接命令的末尾
       - name: Patch Makefile for Windows
         run: |
-          # 1. 修正编译器和宏定义
+          # 1. 修改编译器，增加 -D__NT__ -D__X64__ (Windows 64位环境宏)
           sed -i 's|/usr/bin/clang++|g++ -D__NT__ -D__X64__|g' Makefile
           
-          # 2. 移除 -fPIC
+          # 2. 移除 Linux 专用标志
           sed -i 's|-fPIC||g' Makefile
 
-          # 3. 注入链接库 (ida.lib)
-          # 原理：找到输出指令 "-o bin/class_informer_gcc.so"，在它后面追加 ida.lib 的路径
-          # 注意：MinGW 可以直接链接 MSVC 格式的 .lib 文件
-          sed -i 's|-o bin/class_informer_gcc.so|-o bin/class_informer_gcc.so idasdk9/lib/x64_win_vc_64/ida.lib|g' Makefile
+          # 3. [关键] 在包含 "-o" 的行末尾，追加 ida.lib 的路径
+          # 这样无论 Makefile 里的目标文件名是什么，都会把库文件加到命令最后，确保链接器能读到。
+          sed -i '/-o /s/$/ idasdk9\/lib\/x64_win_vc_64\/ida.lib/' Makefile
 
-          # 打印 Makefile 检查修改是否生效
-          echo "=== Patched Makefile Content ==="
+          # 4. 打印修改后的 Makefile，方便在 Actions 日志里检查是否替换成功
+          echo "=== Debug: Patched Makefile Content ==="
           cat Makefile
 
       - name: Build Plugin
@@ -63,8 +62,8 @@ jobs:
 
       - name: Rename and Move Output
         run: |
-          # 尝试复制并重命名
-          cp bin/class_informer_gcc.so class_informer_gcc.dll || cp bin/class_informer_gcc.dll class_informer_gcc.dll || echo "Output file not found"
+          # 检查并重命名输出文件
+          cp bin/class_informer_gcc.so class_informer_gcc.dll || cp bin/class_informer_gcc.dll class_informer_gcc.dll || echo "Warning: File not found in bin/"
 
       - name: Verify DLL
         run: ls -l class_informer_gcc.dll

@@ -1,47 +1,70 @@
-name: Build IDA Plugin
+name: Build IDA Plugin Windows DLL
 
 on:
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-windows:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
 
     steps:
-      # 1. Checkout your plugin code (classinformer-gcc)
+      # 1. 下载插件源码
       - name: Checkout Plugin Code
         uses: actions/checkout@v4
 
-      # 2. Checkout the IDA SDK into the specific folder 'idasdk9'
-      # Per tutorial: "place your SDK into classinformer-gcc/idasdk9"
+      # 2. 下载 IDA SDK 到指定目录
       - name: Checkout IDA SDK
         uses: actions/checkout@v4
         with:
           repository: shefben/ida_sdk_91
           path: idasdk9
 
-      # 3. Install dependencies (Make and GCC are usually pre-installed, but good to be safe)
-      - name: Install Dependencies
+      # 3. 安装 MSYS2 和 MinGW64 编译环境
+      # 这是在 Windows 上使用 GCC 编译 DLL 的关键步骤
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-tools
+
+      # 4. 执行编译
+      # 注意：MinGW 编译出来的文件可能默认扩展名还是 .so (根据 Makefile 配置)，
+      # 但它的格式实际上是 Windows DLL。我们稍后会重命名。
+      - name: Build Plugin
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential
+          make
 
-      # 4. Build the plugin
-      - name: Run Make
-        run: make
+      # 5. 重命名并准备文件
+      # Makefile 默认把文件放在 bin/ 目录下，且名字可能是 class_informer_gcc.so
+      # 我们把它移动出来并改名为 .dll
+      - name: Rename and Move Output
+        run: |
+          ls -R
+          cp bin/class_informer_gcc.so class_informer_gcc.dll || cp bin/class_informer_gcc.dll class_informer_gcc.dll
+        continue-on-error: true 
+        # 上面这行容错：如果 Makefile 聪明地生成了 dll 就不需要重命名，防止报错
 
-      # 5. verify the file exists (Optional, for debugging log)
-      - name: List files
-        run: ls -l *.so
+      # 6. 验证文件是否存在
+      - name: Verify DLL
+        run: ls -l class_informer_gcc.dll
 
-      # 6. Upload the result so you can download it
-      - name: Upload Plugin Artifact
+      # 7. 上传生成的 DLL
+      - name: Upload DLL Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: class_informer_gcc_plugin
-          path: class_informer_gcc.so
+          name: class_informer_gcc_plugin_win
+          path: class_informer_gcc.dll
           if-no-files-found: error

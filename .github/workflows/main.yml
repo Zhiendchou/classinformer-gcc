@@ -16,19 +16,15 @@ jobs:
         shell: msys2 {0}
 
     steps:
-      # 1. 下载插件源码
       - name: Checkout Plugin Code
         uses: actions/checkout@v4
 
-      # 2. 下载 IDA SDK 到指定目录
       - name: Checkout IDA SDK
         uses: actions/checkout@v4
         with:
           repository: shefben/ida_sdk_91
           path: idasdk9
 
-      # 3. 安装 MSYS2 和 MinGW64 编译环境
-      # 这是在 Windows 上使用 GCC 编译 DLL 的关键步骤
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -39,29 +35,25 @@ jobs:
             make
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-tools
+            sed
 
-      # 4. 执行编译
-      # 注意：MinGW 编译出来的文件可能默认扩展名还是 .so (根据 Makefile 配置)，
-      # 但它的格式实际上是 Windows DLL。我们稍后会重命名。
-      - name: Build Plugin
+      # [关键修复] 修改 Makefile 中的硬编码路径
+      # 原 Makefile 写死了 /usr/bin/clang++，我们把它替换成 g++
+      - name: Patch Makefile
         run: |
-          make
+          sed -i 's|/usr/bin/clang++|g++|g' Makefile
+          echo "Makefile patched successfully."
+          # 打印一下确认修改结果 (可选)
+          head -n 20 Makefile
 
-      # 5. 重命名并准备文件
-      # Makefile 默认把文件放在 bin/ 目录下，且名字可能是 class_informer_gcc.so
-      # 我们把它移动出来并改名为 .dll
+      - name: Build Plugin
+        run: make
+
+      # 将生成的 .so (MinGW 生成的其实是 DLL) 重命名为 .dll
       - name: Rename and Move Output
         run: |
-          ls -R
           cp bin/class_informer_gcc.so class_informer_gcc.dll || cp bin/class_informer_gcc.dll class_informer_gcc.dll
-        continue-on-error: true 
-        # 上面这行容错：如果 Makefile 聪明地生成了 dll 就不需要重命名，防止报错
 
-      # 6. 验证文件是否存在
-      - name: Verify DLL
-        run: ls -l class_informer_gcc.dll
-
-      # 7. 上传生成的 DLL
       - name: Upload DLL Artifact
         uses: actions/upload-artifact@v4
         with:

@@ -1,0 +1,47 @@
+name: Build IDA Plugin
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout your plugin code (classinformer-gcc)
+      - name: Checkout Plugin Code
+        uses: actions/checkout@v4
+
+      # 2. Checkout the IDA SDK into the specific folder 'idasdk9'
+      # Per tutorial: "place your SDK into classinformer-gcc/idasdk9"
+      - name: Checkout IDA SDK
+        uses: actions/checkout@v4
+        with:
+          repository: shefben/ida_sdk_91
+          path: idasdk9
+
+      # 3. Install dependencies (Make and GCC are usually pre-installed, but good to be safe)
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      # 4. Build the plugin
+      - name: Run Make
+        run: make
+
+      # 5. verify the file exists (Optional, for debugging log)
+      - name: List files
+        run: ls -l *.so
+
+      # 6. Upload the result so you can download it
+      - name: Upload Plugin Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: class_informer_gcc_plugin
+          path: class_informer_gcc.so
+          if-no-files-found: error
